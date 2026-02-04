@@ -1,7 +1,6 @@
 # Billing API
 
-“Ye system businesses ko recurring payments, user access control aur billing lifecycle automate karne me help karta hai.”
-
+This backend system handles subscription lifecycle, recurring payments, user access control, and billing automation similar to platforms like Netflix or Amazon Prime.
 ```sh
 src/
  ├── models/
