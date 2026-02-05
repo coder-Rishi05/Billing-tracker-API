@@ -1,11 +1,10 @@
 import Payment from "../models/Payment.js";
 import Subscription from "../models/Subscription.js";
-// import crypto from "crypto"; // real project me signature ke liye
 
 export const handlePaymentWebhook = async (req, res) => {
   try {
-    // 1️⃣ Verify signature (pseudo – real logic gateway specific hota hai)
-    const signatureIsValid = true; // assume verified
+    // 1️⃣ Verify webhook signature (gateway specific in real life)
+    const signatureIsValid = true;
     if (!signatureIsValid) {
       return res.status(400).send("Invalid signature");
     }
@@ -18,49 +17,61 @@ export const handlePaymentWebhook = async (req, res) => {
       providerPaymentId: paymentId,
     });
 
-    // 4️⃣ If payment not found, safely ignore
     if (!payment) {
       return res.status(200).send("Payment not found, ignored");
     }
 
-    // 5️⃣ Duplicate webhook protection (idempotency)
+    // 4️⃣ Idempotency protection
     if (payment.status === "succeeded" || payment.status === "failed") {
       return res.status(200).send("Already processed");
     }
 
-    // 6️⃣ Load related subscription
+    // 5️⃣ Load subscription
     const subscription = await Subscription.findById(payment.subscription);
-
     if (!subscription) {
       return res.status(200).send("Subscription not found");
     }
 
-    // 7️⃣ Handle SUCCESS case
+    // ✅ SUCCESS
     if (event === "payment.succeeded") {
       payment.status = "succeeded";
+      payment.retryCount = 0;
+      payment.nextRetryAt = null;
+      payment.lastRetryAt = null;
       await payment.save();
 
-      // Extend subscription period
-      const currentEnd = new Date(subscription.currentPeriodEnd);
-      currentEnd.setMonth(currentEnd.getMonth() + 1); // monthly example
+      // Safe period extension
+      const now = new Date();
+      const baseDate =
+        subscription.currentPeriodEnd > now
+          ? subscription.currentPeriodEnd
+          : now;
 
-      subscription.currentPeriodEnd = currentEnd;
+      const newEnd = new Date(baseDate);
+      newEnd.setMonth(newEnd.getMonth() + 1); // monthly example
+
+      subscription.currentPeriodEnd = newEnd;
       subscription.status = "active";
-
       await subscription.save();
     }
 
-    // 8️⃣ Handle FAILURE case
+    // ❌ FAILURE (retry will be handled by cron)
     if (event === "payment.failed") {
       payment.status = "failed";
       payment.failureReason = reason || "UNKNOWN";
+      payment.retryCount += 1;
+      payment.lastRetryAt = new Date();
+      payment.nextRetryAt = new Date(
+        Date.now() + 24 * 60 * 60 * 1000, // retry after 24h
+      );
+
       await payment.save();
 
       subscription.status = "past_due";
       await subscription.save();
     }
 
-    // 9️⃣ Always respond 200 to gateway
+    // 6️⃣ Always acknowledge webhook
     return res.status(200).send("OK");
   } catch (error) {
     console.error("Webhook error:", error);

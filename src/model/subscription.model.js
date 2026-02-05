@@ -17,9 +17,16 @@ const subscriptionSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["active", "paused", "cancelled", "expired"],
+      enum: [
+        "active",     // paid & usable
+        "past_due",   // payment failed, retry ongoing
+        "paused",     // user paused
+        "cancelled",  // manual or retry exceeded
+        "expired",    // autoRenew=false + period end
+      ],
       default: "active",
       index: true,
+      message:`{VALUE} is not suitable status`,
     },
 
     currentPeriodStart: {
@@ -38,9 +45,8 @@ const subscriptionSchema = new mongoose.Schema(
       default: true,
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 const Subscription = mongoose.model("Subscription", subscriptionSchema);
-
 export default Subscription;
